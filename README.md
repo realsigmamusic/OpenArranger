@@ -6,33 +6,24 @@ O OpenArranger é uma ferramenta de acompanhamento de código aberto, baseada na
 
 ## Principais Recursos
 
-* **Interface Focada em Performance:** Grade vertical ampla e ergonômica, projetada especificamente para dispositivos móveis e ambientes de palco ao vivo.
-* **Quantização Dinâmica:** Transições de seção fluidas com suporte para execução em compasso inteiro, meio compasso ou um quarto de compasso.
-* **Motor de Ritmo Duplo (v2.0.0):** Roteamento independente, seleção de kits e controles de volume para os canais de Ritmo Principal (Main Rhythm) e Sub Ritmo (Percussão).
-* **Motor de Áudio com Zero Latência:** Construído inteiramente sobre a Web Audio API para um sincronismo de *clock* extremamente sólido e preciso por sample.
-* **Feedback Visual de Roteamento:** Os botões de Intro, Fill e Break sempre mostram uma prévia de sua seção de destino, para que você sempre saiba para onde a música está indo.
-* **Padrões Abertos:** Utiliza arquivos MIDI padrão e formatos de texto legíveis para humanos, permitindo que os criadores produzam conteúdo usando qualquer DAW.
-* **Arquitetura Desacoplada:** Kits de áudio e estilos de ritmo são completamente independentes, possibilitando infinitas combinações de sons.
+- **Interface focada em performance:** grade vertical ampla e ergonômica, projetada para dispositivos móveis e ambientes de palco.
+- **Quantização dinâmica:** transições suaves com execução em compasso inteiro, meio compasso ou um quarto de compasso.
+- **Motor de ritmo duplo:** canais independentes para Ritmo Principal e Sub Ritmo, cada um com seleção de kit e controle de volume.
+- **Motor de áudio com zero latência:** sincronismo preciso utilizando Web Audio API.
+- **Feedback visual:** botões de Intro, Fill e Break mostram antecipadamente a seção de destino.
+- **Padrões abertos:** utiliza arquivos MIDI padrão e formatos de texto legíveis.
+- **Arquitetura desacoplada:** kits de áudio e estilos são independentes e podem ser combinados livremente.
 
-## Especificação do Kit de Som (.kit)
+---
 
-Um Kit de Som é um arquivo compactado `.zip` renomeado para `.kit`. Ele deve conter um ou mais arquivos de definição `.sfz` no nível raiz, juntamente com um único diretório `Samples/` contendo as formas de onda de áudio (WAV). Todos os SFZs dentro do mesmo kit compartilham a mesma pasta `Samples/`, evitando duplicação.
+# Kit de Som (.kit)
 
-Quando um kit com múltiplos SFZs é carregado, **dois seletores independentes** aparecem na interface: um para o canal de Ritmo Principal e outro para o canal de Sub Ritmo. Isso permite misturar e combinar diferentes kits em tempo real (por exemplo, um kit de bateria *Standard* para a batida principal e um kit Latino para a percussão), cada um com seu próprio controle de volume.
+Um Kit de Som é um arquivo `.zip` renomeado para `.kit`.
 
-### Opcodes SFZ Suportados
-
-O *parser* customizado suporta um subconjunto da especificação SFZ padrão:
-
-* **`<control>`**: `default_path`
-* **`<global>`**: `loop_mode`
-* **`<group>`**: `group`, `off_by`, `group_label`
-* **`<region>`**: `key`, `sample`
-
-### Exemplo de estrutura do kit
+Sua estrutura deve conter um ou mais arquivos `.sfz` na raiz e uma única pasta `Samples/` contendo todos os arquivos WAV utilizados.
 
 ```
-Sounds.kit (zip)
+Sounds.kit
 ├── DrumKit.sfz
 ├── PercussionKit.sfz
 └── Samples/
@@ -41,7 +32,34 @@ Sounds.kit (zip)
     └── ...
 ```
 
-### Exemplo de `standard.sfz`
+Quando um kit possui vários arquivos SFZ, o OpenArranger disponibiliza um seletor independente para cada canal:
+
+- **Rhythm** (bateria principal)
+- **Sub Rhythm** (percussão)
+
+Isso permite combinar diferentes kits durante a execução.
+
+## Opcodes SFZ suportados
+
+### `<control>`
+
+- `default_path`
+
+### `<global>`
+
+- `loop_mode`
+
+### `<group>`
+
+- `group`
+- `off_by`
+
+### `<region>`
+
+- `key`
+- `sample`
+
+## Exemplo
 
 ```sfz
 <control> default_path=Samples/
@@ -61,57 +79,113 @@ Sounds.kit (zip)
 <region> key=46 sample=46 Hi-Hat Open.wav group=1 off_by=1
 ```
 
-## Especificação de Estilo (.style)
+---
 
-Um Estilo é um arquivo compactado `.zip` renomeado para `.style`. Ele deve conter exatamente um Arquivo MIDI Padrão (`.mid`) e um arquivo de configuração (`.json`) no nível raiz. Os nomes exatos dos arquivos não importam, pois o motor os identifica pelas suas extensões.
+# Estilo (.style)
 
-Vários arquivos `.style` podem ser carregados de uma só vez. O estilo ativo é selecionado através de um menu suspenso na interface. O motor sempre inicia na **Intro A** quando um novo estilo é aplicado.
+Um Estilo é um arquivo `.zip` renomeado para `.style`.
 
-O motor principal mapeia as seções de performance com base em compassos inteiros, desacoplando os dados musicais de uma reprodução linear e rígida.
+Ele deve conter exatamente:
 
-### Campos do `style.json`
+- um arquivo `.mid`;
+- um arquivo `.json`;
+
+ambos na raiz do arquivo.
+
+```
+MyStyle.style
+├── style.mid
+└── style.json
+```
+
+Os nomes dos arquivos não importam; o OpenArranger identifica cada arquivo apenas pela extensão.
+
+É possível carregar vários estilos simultaneamente e alternar entre eles através da interface.
+
+Sempre que um novo estilo é selecionado, sua execução começa na **Intro A**.
+
+---
+
+## Arquivo MIDI
+
+O arquivo MIDI deve ser do **Tipo 0**.
+
+Pode conter um ou mais canais. Normalmente utiliza-se:
+
+- Canal 10 para bateria;
+- Canal 9 para percussão.
+
+Entretanto, qualquer canal pode ser utilizado desde que seja informado corretamente no `style.json`.
+
+### Informações ignoradas
+
+O OpenArranger **não utiliza** informações presentes no arquivo MIDI como:
+
+- BPM;
+- Time Signature;
+- Markers;
+- Program Change;
+- Control Change.
+
+Essas informações devem ser definidas no arquivo `style.json`.
+
+---
+
+## style.json
 
 | Campo | Tipo | Obrigatório | Descrição |
-| --- | --- | --- | --- |
-| `name` | string | ✅ | Nome de exibição |
-| `timeSignature` | [number, number] | ✅ | ex: `[4, 4]` ou `[6, 8]` |
-| `bpm` | number | ✅ | Andamento padrão |
-| `rhythmChannel` | number | ✅ | Canal MIDI para o kit de bateria principal (ex: `10`) |
-| `subRhythmChannel` | number | ✅ | Canal MIDI para percussão/sub-ritmo (ex: `11`) |
-| `sections` | object | ✅ | Mapa de seções (veja abaixo) |
-| `beatUnit` | string ou number | — | Subdivisão de tempo para compassos compostos (veja abaixo) |
+|-------|------|-------------|-----------|
+| `name` | string | ✓ | Nome do estilo |
+| `timeSignature` | array | ✓ | Ex.: `[4,4]`, `[6,8]` |
+| `bpm` | number | ✓ | Andamento inicial |
+| `rhythmChannel` | number | ✓ | Canal MIDI da bateria |
+| `subRhythmChannel` | number | ✓ | Canal MIDI da percussão |
+| `sections` | object | ✓ | Mapeamento das seções |
+| `beatUnit` | string ou number | | Unidade da pulsação em compassos compostos |
 
-### Exemplo de `style.json`
+### Exemplo
 
 ```json
 {
-  "name": "PopBallad",
+  "name": "16BeatBallad",
   "timeSignature": [4, 4],
-  "bpm": 67,
+  "bpm": 60,
   "rhythmChannel": 10,
   "subRhythmChannel": 9,
   "sections": {
     "Main A": { "startBar": 2, "endBar": 6 },
     "Main B": { "startBar": 6, "endBar": 10 },
-    "Fill In A": { "startBar": 10, "endBar": 11 },
-    "Fill In B": { "startBar": 11, "endBar": 12 },
-    "Intro A": { "startBar": 12, "endBar": 13 },
-    "Ending A": { "startBar": 13, "endBar": 14 },
-    "Break": { "startBar": 14, "endBar": 15 }
+    "Main C": { "startBar": 10, "endBar": 14 },
+    "Main D": { "startBar": 14, "endBar": 18 },
+    "Fill In A": { "startBar": 18, "endBar": 19 },
+    "Fill In B": { "startBar": 19, "endBar": 20 },
+    "Fill In C": { "startBar": 20, "endBar": 21 },
+    "Fill In D": { "startBar": 21, "endBar": 22 },
+    "Intro A": { "startBar": 22, "endBar": 23 },
+    "Intro B": { "startBar": 23, "endBar": 25 },
+    "Intro C": { "startBar": 25, "endBar": 29 },
+    "Ending A": { "startBar": 29, "endBar": 31 },
+    "Ending B": { "startBar": 31, "endBar": 33 },
+    "Ending C": { "startBar": 33, "endBar": 36 },
+    "Break": { "startBar": 36, "endBar": 37 }
   }
 }
 ```
 
-### Fórmulas de compasso composto e `beatUnit`
+---
 
-Em compassos compostos (6/8, 12/8, etc.), a unidade de tempo é ambígua — um músico pode sentir a pulsação como uma semínima pontuada ou como uma colcheia. O campo `beatUnit` permite que o criador do estilo declare isso explicitamente, para que tanto o *tap tempo* quanto a velocidade de reprodução interna se comportem corretamente.
+## beatUnit
 
-| Valor | Significado |
-| --- | --- |
-| `4` | Semínima — padrão, mesmo efeito de omitir o campo |
-| `8` | Colcheia |
+Em compassos compostos (`6/8`, `9/8`, `12/8` etc.), o campo `beatUnit` define qual é a unidade da pulsação.
+
+| Valor  | Significado       |
+|--------|-------------------|
+| `4`    | Semínima (padrão) |
+| `8`    | Colcheia          |
 | `"4."` | Semínima pontuada |
-| `2` | Mínima |
+| `2`    | Mínima            |
+
+Exemplo:
 
 ```json
 {
@@ -122,11 +196,27 @@ Em compassos compostos (6/8, 12/8, etc.), a unidade de tempo é ambígua — um 
 }
 ```
 
-Quando `beatUnit` é omitido, o motor assume o padrão de uma semínima — preservando total compatibilidade com os estilos existentes.
+Quando omitido, o OpenArranger assume `4`.
 
-## Licença e Créditos
+---
 
-Este projeto é de código aberto e está disponível sob a Licença MIT.
+# Boas práticas para criação de estilos
 
-* Utilitário de ícones maskable por [NotWoods - Maskable](https://github.com/NotWoods/maskable)
-* [jszip](https://stuk.github.io/jszip/)
+- Utilize **Markers** na DAW para facilitar futuras edições, mesmo que o OpenArranger os ignore.
+- Recomenda-se que **Fills** e **Breaks** tenham apenas um compasso.
+- **Intros** e **Endings** podem ter qualquer duração.
+- As seções **Main** funcionam melhor com dois ou mais compassos, embora um compasso também seja permitido.
+- Para um resultado mais natural, coloque o prato de ataque no último instante do compasso anterior, com duração mínima, criando a sensação de que ele ocorre no início do compasso seguinte.
+
+---
+
+# Licença e Créditos
+
+Este projeto é distribuído sob a Licença MIT.
+
+Veja o arquivo **LICENCE**.
+
+## Créditos
+
+- Utilitário de ícones maskable por NotWoods
+- JSZip
