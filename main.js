@@ -1002,6 +1002,14 @@ document.getElementById('input-kit').addEventListener('change', async e => {
 	e.target.value = '';
 });
 
+// Feedback tátil (mobile) ========================================================================
+// Útil em palco: confirma o toque sem precisar olhar pra tela.
+function vibrate(pattern) {
+	if (navigator.vibrate) {
+		try { navigator.vibrate(pattern); } catch (e) { /* navegador sem suporte real ao método */ }
+	}
+}
+
 document.querySelectorAll('.grid-container .btn').forEach(btn => {
 	btn.addEventListener('click', e => {
 		const clicked = e.target.closest('[data-section]')?.dataset.section;
@@ -1014,6 +1022,7 @@ document.querySelectorAll('.grid-container .btn').forEach(btn => {
 			nextSection = clicked;
 			_repeatCurrent = false;
 			if (clicked.startsWith('Main ')) returnSection = clicked;
+			vibrate(10); // seleção simples, ainda parado
 			updateUI();
 			return;
 		}
@@ -1021,11 +1030,19 @@ document.querySelectorAll('.grid-container .btn').forEach(btn => {
 		if (clicked === currentSection) {
 			// Clicou na seção ativa → agenda repetição do início
 			_repeatCurrent = true;
+			vibrate([10, 30, 10]); // pulso duplo: repetição enfileirada
 			// Feedback visual: pisca o botão como queued
 			btn.classList.add('queued');
 		} else {
 			_repeatCurrent = false;
 			nextSection = clicked;
+			if (clicked.startsWith('Ending ')) {
+				vibrate([25, 50, 25, 50, 25]); // padrão mais forte: vai parar a música
+			} else if (clicked.startsWith('Fill In ') || clicked === 'Break') {
+				vibrate([15, 40, 15]); // transição especial
+			} else {
+				vibrate(12); // troca normal entre Main/Intro
+			}
 			updateUI();
 		}
 	});
