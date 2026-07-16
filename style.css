@@ -32,6 +32,13 @@ h1 {
 	padding: 0.25rem 0.5rem;
 }
 
+.header-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem;
+}
+
 #app-version {
 	font-size: 0.85rem;
 }
@@ -198,6 +205,71 @@ h1 {
 	border: 1px solid rgba(0,0,0,0.15);
 	border-radius: 0.25rem;
 	padding: 0 0.3rem 0 0.5rem;
+}
+
+/* Gravação (no header, ao lado do título) */
+.header-record-block {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+	padding-right: 0.5rem;
+	flex-shrink: 0;
+}
+
+.rec-btn, .rec-play-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: #ccc;
+	font-family: 'Doto', monospace;
+	background: transparent;
+	border: 1px solid rgba(255,255,255,0.2);
+	border-radius: 0.25rem;
+	cursor: pointer;
+	padding: 0.35rem;
+	line-height: 1;
+}
+
+.rec-btn {
+	color: #e57373;
+	border-color: rgba(229,115,115,0.4);
+}
+
+.rec-btn.recording {
+	background: #c62828;
+	color: #fff;
+	border-color: #c62828;
+	animation: pulse-rec 1s infinite;
+}
+
+.rec-btn.armed {
+	background: transparent;
+	color: #e57373;
+	border-color: #c62828;
+	animation: pulse-armed 0.6s infinite;
+}
+
+@keyframes pulse-armed {
+	0%   { box-shadow: 0 0 2px #c62828; border-color: #c62828; }
+	50%  { box-shadow: 0 0 2px transparent; border-color: rgba(198,40,40,0.3); }
+	100% { box-shadow: 0 0 2px #c62828; border-color: #c62828; }
+}
+
+@keyframes pulse-rec {
+	0%   { box-shadow: 0 0 4px #c62828; }
+	50%  { box-shadow: 0 0 12px #ff5252; }
+	100% { box-shadow: 0 0 4px #c62828; }
+}
+
+.rec-play-btn:disabled {
+	opacity: 0.35;
+	cursor: not-allowed;
+}
+
+.rec-play-btn.playing {
+	background: #2e7d32;
+	color: #fff;
+	border-color: #2e7d32;
 }
 
 /* Volume */
