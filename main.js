@@ -255,6 +255,19 @@ let currentBarIndexInSection = 0;
 function startBar(sectionName, barIndexInSection, startTime, entryTick = 0) {
 	currentSection	 = sectionName;
 	currentBarIndexInSection = barIndexInSection;
+	// Se a gravação está armada, só começa efetivamente num início de compasso "de verdade"
+	// (entryTick 0) — garante que o tick 0 do MIDI exportado caia exatamente no grid.
+	if (recordArmed && entryTick === 0) {
+		recordArmed = false;
+		isRecording = true;
+		recordStartTime = startTime;
+		recordEvents = [];
+		tempoChanges = [{ time: startTime, bpm }];
+		recordTimeSig = { num: beatsPerBar, beatType: beatType };
+		recordBeatUnitFactor = beatUnitFactor;
+		updateRecordUI();
+		setStatus('Gravando performance...');
+	}
 	// Em immediate, recua o barStartTime para que barTickOffset comece em entryTick
 	barStartTime = startTime - ticksToSeconds(entryTick);
 	barTickOffset = entryTick;
@@ -665,6 +678,239 @@ async function loadStyleFile(file) {
 	updateStyleSelect(false); // atualiza UI sem aplicar style
 }
 
+// Gravação de performance ao vivo (exporta MIDI) =================================================
+let isRecording               = false;
+let recordArmed               = false; // armado: vai começar no próximo início de compasso real
+let isPlayingRecording        = false;
+let recordStartTime           = 0;     // audioCtx.currentTime no início real da gravação (alinhado ao grid)
+let recordEvents               = [];    // { time, note, velocity, role, channel } — tempos absolutos de audioCtx
+let recordedEventsForPlayback = [];    // snapshot congelado após parar, usado no botão Play
+let tempoChanges               = [];    // { time, bpm } — histórico de BPM durante a gravação
+let recordTimeSig               = { num: 4, beatType: 4 }; // fórmula de compasso capturada no início da gravação
+let recordBeatUnitFactor        = 1; // beatUnitFactor capturado no início da gravação (compassos compostos)
+
+function logTempoChange() {
+	if (!isRecording || !audioCtx) return;
+	tempoChanges.push({ time: audioCtx.currentTime, bpm });
+}
+
+function stopRecording() {
+	if (!isRecording) return;
+	isRecording = false;
+	if (recordEvents.length === 0) {
+		setStatus('Gravação vazia — nenhuma nota capturada.');
+		updateRecordUI();
+		return;
+	}
+	recordedEventsForPlayback = recordEvents.slice();
+	exportRecordingAsMidi();
+	updateRecordUI();
+}
+
+// Rec funciona em 3 estados: parado → arma; armado → desarma; gravando → para e exporta (punch-out,
+// não interrompe a música). O início de fato só acontece dentro de startBar(), num compasso cheio,
+// pra garantir que o tick 0 do MIDI exportado sempre caia certinho no grid.
+function toggleRecording() {
+	if (isPlayingRecording) { setStatus('Pare o playback antes de gravar.'); return; }
+	if (isRecording) { stopRecording(); return; }
+	if (recordArmed) {
+		recordArmed = false;
+		updateRecordUI();
+		setStatus('Gravação cancelada.');
+		return;
+	}
+	initAudio();
+	recordArmed = true;
+	updateRecordUI();
+	setStatus(isPlaying
+		? 'Gravação armada — começa no próximo compasso.'
+		: 'Gravação armada — começa junto com o Start.');
+}
+
+// Converte um tempo absoluto (audioCtx.currentTime) em ticks MIDI, respeitando
+// mudanças de BPM registradas durante a gravação (tempoChanges já ordenado por time)
+function secondsToRecordedTicks(tSec, ppq) {
+	// Precisa ser o inverso exato de ticksToSeconds(): (t/ppq)*(60/bpm)/beatUnitFactor
+	const factor = recordBeatUnitFactor || 1;
+	let ticks = 0;
+	for (let i = 0; i < tempoChanges.length; i++) {
+		const segStart = tempoChanges[i].time;
+		if (tSec <= segStart) break;
+		const segEnd = (i + 1 < tempoChanges.length) ? tempoChanges[i + 1].time : tSec;
+		const segBpm = tempoChanges[i].bpm;
+		const dur = Math.min(tSec, segEnd) - segStart;
+		if (dur > 0) ticks += dur * (segBpm / 60) * ppq * factor;
+		if (tSec <= segEnd) break;
+	}
+	return Math.max(0, Math.round(ticks));
+}
+
+// MIDI writer (zero-dependency, Tipo 0) ===========================================================
+function midiVarLen(value) {
+	let buf = value & 0x7f;
+	const bytes = [];
+	value >>>= 7;
+	while (value > 0) {
+		bytes.unshift((value & 0x7f) | 0x80);
+		value >>>= 7;
+	}
+	bytes.push(buf);
+	return bytes;
+}
+
+// beatType (4, 8, 2, 16...) -> expoente de potência de 2 exigido pelo meta-evento de Time Signature
+function denominatorPower(beatType) {
+	return Math.max(0, Math.round(Math.log2(beatType || 4)));
+}
+
+function buildMidiFile(noteEvents, metaEvents, ppq) {
+	// noteEvents: [{ tick, note, velocity, channel, type: 'on'|'off' }]
+	// metaEvents: [{ tick, kind: 'tempo', bpm }] ou [{ tick, kind: 'timesig', num, beatType }]
+	const all = [
+		...metaEvents.map(e => ({ ...e, isMeta: true })),
+		...noteEvents.map(e => ({ ...e, isMeta: false })),
+	];
+	// Em empate de tick: meta antes de note-off antes de note-on
+	all.sort((a, b) => a.tick - b.tick
+		|| (Number(b.isMeta) - Number(a.isMeta))
+		|| ((a.type === 'off' ? 0 : 1) - (b.type === 'off' ? 0 : 1)));
+
+	const track = [];
+	let lastTick = 0;
+	for (const ev of all) {
+		track.push(...midiVarLen(Math.max(0, ev.tick - lastTick)));
+		lastTick = ev.tick;
+		if (ev.isMeta && ev.kind === 'tempo') {
+			const microsPerBeat = Math.max(1, Math.round(60000000 / ev.bpm));
+			track.push(0xFF, 0x51, 0x03, (microsPerBeat >> 16) & 0xff, (microsPerBeat >> 8) & 0xff, microsPerBeat & 0xff);
+		} else if (ev.isMeta && ev.kind === 'timesig') {
+			track.push(0xFF, 0x58, 0x04, ev.num & 0xff, denominatorPower(ev.beatType) & 0xff, 24, 8);
+		} else {
+			const status = (ev.type === 'on' ? 0x90 : 0x80) | (ev.channel & 0x0f);
+			track.push(status, ev.note & 0x7f, ev.velocity & 0x7f);
+		}
+	}
+	track.push(...midiVarLen(0), 0xFF, 0x2F, 0x00); // End of Track
+
+	const header = [0x4D,0x54,0x68,0x64, 0,0,0,6, 0,0, 0,1, (ppq >> 8) & 0xff, ppq & 0xff];
+	const trackHeader = [0x4D,0x54,0x72,0x6B,
+		(track.length >>> 24) & 0xff, (track.length >>> 16) & 0xff,
+		(track.length >>> 8) & 0xff, track.length & 0xff];
+
+	return new Blob([new Uint8Array([...header, ...trackHeader, ...track])], { type: 'audio/midi' });
+}
+
+function timestampStr() {
+	const d = new Date();
+	const pad = n => String(n).padStart(2, '0');
+	return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+
+function downloadBlob(blob, filename) {
+	const url = URL.createObjectURL(blob);
+	const a = document.createElement('a');
+	a.href = url; a.download = filename;
+	document.body.appendChild(a); a.click();
+	document.body.removeChild(a);
+	setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+function exportRecordingAsMidi() {
+	const ppq = stylePPQ || 480;
+	const gateTicks = Math.max(10, Math.round(ppq / 16)); // duração curta (percussivo)
+
+	const noteEvents = [];
+	for (const ev of recordedEventsForPlayback) {
+		const tickOn = secondsToRecordedTicks(ev.time, ppq);
+		noteEvents.push({ tick: tickOn,             note: ev.note, velocity: ev.velocity, channel: ev.channel, type: 'on'  });
+		noteEvents.push({ tick: tickOn + gateTicks,  note: ev.note, velocity: 0,           channel: ev.channel, type: 'off' });
+	}
+
+	const metaEvents = [
+		{ tick: 0, kind: 'timesig', num: recordTimeSig.num, beatType: recordTimeSig.beatType },
+		...tempoChanges.map(tc => ({ tick: secondsToRecordedTicks(tc.time, ppq), kind: 'tempo', bpm: tc.bpm })),
+	];
+
+	const blob = buildMidiFile(noteEvents, metaEvents, ppq);
+	downloadBlob(blob, `OpenArranger_${timestampStr()}.mid`);
+	setStatus(`Gravação exportada: ${recordedEventsForPlayback.length} notas, ${recordTimeSig.num}/${recordTimeSig.beatType}, BPM inicial ${tempoChanges[0]?.bpm ?? bpm}.`);
+}
+
+// Playback da última gravação (reaproveita os samples já carregados) ============================
+let recordingPlaybackSources = [];
+let recordingPlaybackTimeoutId = null;
+
+function scheduleRecordedNote(ev, when) {
+	const buffersObj = ev.role === 'rhythm' ? kitBuffers    : kitBuffersSub;
+	const loaded      = ev.role === 'rhythm' ? kitLoaded     : kitLoadedSub;
+	const destGain    = ev.role === 'rhythm' ? masterGain    : masterGainSub;
+	if (!loaded || !buffersObj[ev.note] || !destGain) return null;
+
+	const src  = audioCtx.createBufferSource();
+	const gain = audioCtx.createGain();
+	src.buffer = buffersObj[ev.note];
+	gain.gain.setValueAtTime(Math.pow(ev.velocity / 127, 2), when);
+	src.connect(gain);
+	gain.connect(destGain);
+	src.start(when);
+	return src;
+}
+
+function playRecording() {
+	if (!recordedEventsForPlayback.length) { setStatus('Nenhuma gravação disponível.'); return; }
+	if (isRecording || isPlayingRecording) return;
+	if (isPlaying) togglePlay(); // não mistura com o arranjador ao vivo
+	initAudio();
+
+	isPlayingRecording = true;
+	updateRecordUI();
+	setStatus('Tocando gravação...');
+
+	const startRef = recordedEventsForPlayback[0].time;
+	const t0 = audioCtx.currentTime + 0.1;
+	recordingPlaybackSources = [];
+	for (const ev of recordedEventsForPlayback) {
+		const when = t0 + (ev.time - startRef);
+		const src = scheduleRecordedNote(ev, when);
+		if (src) recordingPlaybackSources.push(src);
+	}
+	const lastEv = recordedEventsForPlayback[recordedEventsForPlayback.length - 1];
+	const totalDurMs = ((lastEv.time - startRef) + 1) * 1000;
+	recordingPlaybackTimeoutId = setTimeout(() => stopRecordingPlayback(false), totalDurMs);
+}
+
+function stopRecordingPlayback(manual = true) {
+	if (!isPlayingRecording) return;
+	clearTimeout(recordingPlaybackTimeoutId);
+	for (const src of recordingPlaybackSources) {
+		try { src.stop(); } catch (e) { /* já pode ter terminado sozinha */ }
+	}
+	recordingPlaybackSources = [];
+	isPlayingRecording = false;
+	updateRecordUI();
+	setStatus(manual ? 'Playback interrompido.' : 'Playback concluído.');
+}
+
+function toggleRecordingPlayback() {
+	if (isPlayingRecording) stopRecordingPlayback(true);
+	else playRecording();
+}
+
+const ICON_RECORD = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-record-fill" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 13A5 5 0 1 0 8 3a5 5 0 0 0 0 10"/></svg>';
+const ICON_STOP   = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-stop-fill" viewBox="0 0 16 16"><path d="M5 3.5h6A1.5 1.5 0 0 1 12.5 5v6a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 11V5A1.5 1.5 0 0 1 5 3.5"/></svg>';
+const ICON_PLAY    = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-play-fill" viewBox="0 0 16 16"><path d="m11.596 8.697-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393"/></svg>';
+
+function updateRecordUI() {
+	const recBtn  = document.getElementById('btn-record');
+	const playBtn = document.getElementById('btn-play-recording');
+	recBtn.classList.toggle('recording', isRecording);
+	recBtn.classList.toggle('armed', recordArmed);
+	recBtn.innerHTML = isRecording ? ICON_STOP : ICON_RECORD;
+	playBtn.disabled = recordedEventsForPlayback.length === 0 || isRecording;
+	playBtn.classList.toggle('playing', isPlayingRecording);
+	playBtn.innerHTML = isPlayingRecording ? ICON_STOP : ICON_PLAY;
+}
+
 // Sample player ==================================================================================
 let masterGain      = null;
 let masterGainSub   = null;
@@ -672,6 +918,7 @@ let masterVolume    = 1.0;
 let masterVolumeSub = 1.0;
 
 function triggerSample(note, velocity, time) {
+	if (isRecording) recordEvents.push({ time, note, velocity, role: 'rhythm', channel: drumChannels[0] ?? 9 });
 	if (!kitLoaded || !kitBuffers[note] || !masterGain) return;
 	const src = audioCtx.createBufferSource();
 	const gain = audioCtx.createGain();
@@ -684,6 +931,7 @@ function triggerSample(note, velocity, time) {
 }
 
 function triggerSampleSub(note, velocity, time) {
+	if (isRecording) recordEvents.push({ time, note, velocity, role: 'sub', channel: (drumChannelsSub[0] ?? 8) });
 	if (!kitLoadedSub || !kitBuffersSub[note] || !masterGainSub) return;
 	const src = audioCtx.createBufferSource();
 	const gain = audioCtx.createGain();
@@ -730,6 +978,8 @@ function togglePlay() {
 		document.getElementById('btn-play').innerText = 'Start';
 		document.getElementById('btn-play').classList.remove('playing');
 		document.getElementById('beat-indicator').innerText = '*';
+		recordArmed = false;
+		if (isRecording) stopRecording();
 	}
 }
 
@@ -742,6 +992,8 @@ function scheduleStop(atTime) {
 		document.getElementById('btn-play').innerText = 'Start';
 		document.getElementById('btn-play').classList.remove('playing');
 		document.getElementById('beat-indicator').innerText = '*';
+		recordArmed = false;
+		if (isRecording) stopRecording();
 		updateUI();
 	}, delay);
 }
@@ -892,6 +1144,7 @@ function processTap() {
 	const newBpm = Math.round(60000 / avgGap);
 	bpm = Math.max(40, Math.min(250, newBpm));
 	document.getElementById('bpm-display').value = bpm;
+	logTempoChange();
 	setStatus(`Tap tempo: ${bpm} BPM`);
 }
 
@@ -941,11 +1194,13 @@ const bpmInput = document.getElementById('bpm-display');
 makeLongPress(document.getElementById('bpm-plus'), () => {
 	bpm = Math.min(250, bpm + 1);
 	bpmInput.value = bpm;
+	logTempoChange();
 });
 
 makeLongPress(document.getElementById('bpm-minus'), () => {
 	bpm = Math.max(40, bpm - 1);
 	bpmInput.value = bpm;
+	logTempoChange();
 });
 
 document.getElementById('beat-indicator').addEventListener('click', processTap);
@@ -956,6 +1211,7 @@ bpmInput.addEventListener('change', (e) => {
 	if (isNaN(val)) val = 120;
 	bpm = Math.max(40, Math.min(250, val));
 	bpmInput.value = bpm;
+	logTempoChange();
 });
 
 document.getElementById('btn-load-kit').addEventListener('click', () => document.getElementById('input-kit').click());
@@ -992,6 +1248,8 @@ document.getElementById('kit-select-sub').addEventListener('change', async e => 
 	const [ki, si] = e.target.value.split(':').map(Number);
 	if (!isNaN(ki)) await applyKit(ki, si, 'sub');
 });
+document.getElementById('btn-record').addEventListener('click', toggleRecording);
+document.getElementById('btn-play-recording').addEventListener('click', toggleRecordingPlayback);
 document.getElementById('btn-debug').addEventListener('click', showDebugInfo);
 document.getElementById('close-debug').addEventListener('click', () =>
 document.getElementById('debug-modal').style.display = 'none');
@@ -1140,6 +1398,7 @@ async function restoreLastSession() {
 
 // Inicialização ==================================================================================
 updateUI();
+updateRecordUI();
 restoreLastSession();
 
 // Versionamento dinâmico do app ==================================================================
