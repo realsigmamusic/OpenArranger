@@ -51,7 +51,7 @@ A partir da v2.3.1, o OpenArranger inclui um **gravador de performance integrado
 
 ---
 
-# Kit de Som (.kit)
+## Kit de Som (.kit)
 
 Um Kit de Som é um arquivo `.zip` renomeado para `.kit`.
 
@@ -74,27 +74,27 @@ Quando um kit possui vários arquivos SFZ, o OpenArranger disponibiliza um selet
 
 Isso permite combinar diferentes kits durante a execução.
 
-## Opcodes SFZ suportados
+### Opcodes SFZ suportados
 
-### `<control>`
+#### `<control>`
 
 - `default_path`
 
-### `<global>`
+#### `<global>`
 
 - `loop_mode`
 
-### `<group>`
+#### `<group>`
 
 - `group`
 - `off_by`
 
-### `<region>`
+#### `<region>`
 
 - `key`
 - `sample`
 
-## Exemplo
+### Exemplo
 
 ```sfz
 <control> default_path=Samples/
@@ -116,7 +116,7 @@ Isso permite combinar diferentes kits durante a execução.
 
 ---
 
-# Estilo (.style)
+## Estilo (.style)
 
 Um Estilo é um arquivo `.zip` renomeado para `.style`.
 
@@ -209,7 +209,7 @@ Essas informações devem ser definidas no arquivo `style.json`.
 
 ---
 
-## beatUnit
+### beatUnit
 
 Em compassos compostos (`6/8`, `9/8`, `12/8` etc.), o campo `beatUnit` define qual é a unidade da pulsação.
 
@@ -235,7 +235,7 @@ Quando omitido, o OpenArranger assume `4`.
 
 ---
 
-# Boas práticas para criação de estilos
+## Boas práticas para criação de estilos
 
 - Utilize **Markers** na DAW para facilitar futuras edições, mesmo que o OpenArranger os ignore.
 - Recomenda-se que **Fills** e **Breaks** tenham apenas um compasso.
@@ -245,13 +245,13 @@ Quando omitido, o OpenArranger assume `4`.
 
 ---
 
-# Licença e Créditos
+## Licença e Créditos
 
 Este projeto é distribuído sob a Licença MIT.
 
 Veja o arquivo **LICENCE**.
 
-## Créditos
+### Créditos
 
 - Utilitário de ícones maskable por NotWoods
 - JSZip
