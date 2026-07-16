@@ -1,0 +1,62 @@
+13 Cajon Low
+14 Cajon Slap
+15 Cajon Tip
+16 Claves High
+17 Claves Low
+18 Hand Clap
+20 Finger Snap
+21 Castanet
+22 Conga H Tip
+23 Conga H Heel
+24 Conga H Open
+25 Conga H Mute
+26 Conga H Slap Open
+27 Conga H Slap
+28 Conga H Slap Mute
+29 Conga L Tip
+30 Conga L Heel
+31 Conga L Open
+32 Conga L Mute
+33 Conga L Slap Open
+34 Conga L Slap
+35 Conga L Slide
+36 Bongo H Open 1 finger
+37 Bongo H Open 3 finger
+38 Bongo H Rim
+39 Bongo H Tip
+40 Bongo H Heel
+41 Bongo H Slap
+42 Bongo L Open 1 finger
+43 Bongo L Open 3 finger
+44 Bongo L Rim
+45 Bongo L Tip
+46 Bongo L Heel
+47 Bongo L Slap
+48 Timbale L Open
+53 Paila L
+54 Timbale H Open
+59 Paila H
+60 Cowbell Top
+61 Cowbell 1
+62 Cowbell 2
+63 Cowbell 3
+64 Guiro Short
+65 Guiro Long
+66 Metal Guiro Short
+67 Metal Guiro Long
+68 Tambourine
+69 Tambourim Open
+70 Tambourim Mute
+71 Tambourim Tip
+72 Maracas
+73 Shaker
+74 Cabasa
+75 Cuica Mute
+76 Cuica Open
+77 Cowbell High 1
+78 Cowbell High 2
+79 Shekere
+80 Shekere Tone
+81 Triangle Mute
+82 Triangle Open
+84 Wind Chime

@@ -1,0 +1,66 @@
+<control> default_path=Samples/
+
+<global> loop_mode=one_shot
+
+<region> key=13 sample=13 Cajon Low.wav
+<region> key=14 sample=14 Cajon Slap.wav
+<region> key=15 sample=15 Cajon Tip.wav
+<region> key=16 sample=16 Claves High.wav
+<region> key=17 sample=17 Claves Low.wav
+<region> key=18 sample=18 Hand Clap.wav
+<region> key=20 sample=20 Finger Snap.wav
+<region> key=21 sample=21 Castanet.wav
+<region> key=22 sample=22 Conga H Tip.wav
+<region> key=23 sample=23 Conga H Heel.wav
+<region> key=24 sample=24 Conga H Open.wav
+<region> key=25 sample=25 Conga H Mute.wav
+<region> key=26 sample=26 Conga H Slap Open.wav
+<region> key=27 sample=27 Conga H Slap.wav
+<region> key=28 sample=28 Conga H Slap Mute.wav
+<region> key=29 sample=29 Conga L Tip.wav
+<region> key=30 sample=30 Conga L Heel.wav
+<region> key=31 sample=31 Conga L Open.wav
+<region> key=32 sample=32 Conga L Mute.wav
+<region> key=33 sample=33 Conga L Slap Open.wav
+<region> key=34 sample=34 Conga L Slap.wav
+<region> key=35 sample=35 Conga L Slide.wav loop_mode=normal
+<region> key=36 sample=36 Bongo H Open 1 finger.wav
+<region> key=37 sample=37 Bongo H Open 3 finger.wav
+<region> key=38 sample=38 Bongo H Rim.wav
+<region> key=39 sample=39 Bongo H Tip.wav
+<region> key=40 sample=40 Bongo H Heel.wav
+<region> key=41 sample=41 Bongo H Slap.wav
+<region> key=42 sample=42 Bongo L Open 1 finger.wav
+<region> key=43 sample=43 Bongo L Open 3 finger.wav
+<region> key=44 sample=44 Bongo L Rim.wav
+<region> key=45 sample=45 Bongo L Tip.wav
+<region> key=46 sample=46 Bongo L Heel.wav
+<region> key=47 sample=47 Bongo L Slap.wav
+<region> key=48 sample=48 Timbale L Open.wav
+<region> key=53 sample=53 Paila L.wav
+<region> key=54 sample=54 Timbale H Open.wav
+<region> key=59 sample=59 Paila H.wav
+<region> key=60 sample=60 Cowbell Top.wav
+<region> key=61 sample=61 Cowbell 1.wav
+<region> key=62 sample=62 Cowbell 2.wav
+<region> key=63 sample=63 Cowbell 3.wav
+<region> key=64 sample=64 Guiro Short.wav
+<region> key=65 sample=65 Guiro Long.wav loop_mode=normal
+<region> key=66 sample=66 Metal Guiro Short.wav
+<region> key=67 sample=67 Metal Guiro Long.wav loop_mode=normal
+<region> key=68 sample=68 Tambourine.wav
+<region> key=69 sample=69 Tambourim Open.wav
+<region> key=70 sample=70 Tambourim Mute.wav
+<region> key=71 sample=71 Tambourim Tip.wav
+<region> key=72 sample=72 Maracas.wav
+<region> key=73 sample=73 Shaker.wav
+<region> key=74 sample=74 Cabasa.wav
+<region> key=75 sample=75 Cuica Mute.wav
+<region> key=76 sample=76 Cuica Open.wav
+<region> key=77 sample=77 Cowbell High 1.wav
+<region> key=78 sample=78 Cowbell High 2.wav
+<region> key=79 sample=79 Shekere.wav
+<region> key=80 sample=80 Shekere Tone.wav
+<region> key=81 sample=81 Triangle Mute.wav group=1 off_by=1
+<region> key=82 sample=82 Triangle Open.wav group=1 off_by=1
+<region> key=84 sample=84 Wind Chime.wav
