@@ -26,7 +26,21 @@
 <body>
 
 	<header>
-		<h1>OpenArranger <span id="app-version"></span></h1>
+		<div class="header-row">
+			<h1>OpenArranger <span id="app-version"></span></h1>
+			<div class="header-record-block">
+				<button id="btn-record" class="rec-btn" title="Gravar performance (exporta .mid)">
+					<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-record-fill" viewBox="0 0 16 16">
+						<path fill-rule="evenodd" d="M8 13A5 5 0 1 0 8 3a5 5 0 0 0 0 10"/>
+					</svg>
+				</button>
+				<button id="btn-play-recording" class="rec-play-btn" title="Tocar última gravação" disabled>
+					<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-play-fill" viewBox="0 0 16 16">
+					  <path d="m11.596 8.697-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393"/>
+					</svg>
+				</button>
+			</div>
+		</div>
 		<div class="lcd-screen">
 			<div class="lcd-content">
 				<div class="header-top">
