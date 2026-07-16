@@ -1,8 +1,43 @@
+![GitHub release](https://img.shields.io/github/v/release/realsigmamusic/openarranger?include_prereleases)
+![License](https://img.shields.io/github/license/realsigmamusic/openarranger)
+![JavaScript](https://img.shields.io/github/languages/top/realsigmamusic/openarranger)
+
 # OpenArranger
 
-O OpenArranger é uma ferramenta de acompanhamento de código aberto, baseada na web e com funcionamento *offline-first* (prioridade offline), projetada para músicos solo que tocam ao vivo. Ele emula o comportamento dos tradicionais teclados arranjadores físicos, permitindo o controle em tempo real de padrões de bateria não-lineares (Mains, Fills, Intros, Endings e Breaks) com zero latência de áudio.
+Ferramenta de acompanhamento musical open-source, web-based e offline-first para performances ao vivo — agora com **gravação e exportação MIDI**.
 
-![Screenshot.jpg](screenshot.jpg)
+## Sumário
+
+- [Visão Geral](#visão-geral)
+- [Principais Recursos](#principais-recursos)
+- [Gravação e Exportação MIDI](#gravação-e-exportação-midi)
+- [Kit de Som (`.kit`)](#kit-de-som-kit)
+- [Estilo (`.style`)](#estilo-style)
+- [Boas Práticas para Criação de Estilos](#boas-práticas-para-criação-de-estilos)
+- [Licença e Créditos](#licença-e-créditos)
+
+## Visão Geral
+
+O OpenArranger emula teclados arranjadores físicos no navegador, com **zero latência de áudio** e funcionamento **100% offline** (PWA). Projetado para músicos solo que tocam ao vivo, permite o controle em tempo real de padrões de bateria não-lineares (Mains, Fills, Intros, Endings, Breaks) — e agora também **grava e exporta sua performance como MIDI quantizado**.
+
+[![Screenshot](screenshot.jpg)](screenshot.jpg)
+
+## Principais Recursos
+
+- **Interface focada em performance:** grade vertical ampla e ergonômica, otimizada para dispositivos móveis em ambiente de palco
+- **Quantização dinâmica:** transições no grid (compassos inteiros, metade ou ¼)
+- **Motor de ritmo duplo:** canais independentes para Ritmo Principal e Sub-Ritmo, cada um com seleção de kit e controle de volume
+- **Motor de áudio com zero latência:** Web Audio API sincronizado
+- **Feedback visual e tátil:** botões antecipam a seção de destino; vibração confirma comandos (Android)
+- **Gravação ao vivo em MIDI:** registre toda a sua performance e exporte como arquivo `.mid` quantizado, com BPM e fórmula de compasso preservados
+- **Reprodutor interno:** ouça a última gravação instantaneamente sem sair do app
+- **Padrões abertos:** arquivos MIDI, SFZ e JSON legíveis e editáveis
+- **Arquitetura desacoplada:** kits e estilos são intercambiáveis
+
+## Gravação e Exportação MIDI
+
+A partir da v2.3.1, o OpenArranger inclui um **gravador de performance integrado**, acessível por dois botões na interface:
+
 
 ## Principais Recursos
 
