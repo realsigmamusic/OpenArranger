@@ -53,6 +53,14 @@ let drumChannelsSub = [8];  // SubRhythm (canal 9 em 1-based → índice 8)
 let beatUnitFactor = 1; // fator de conversão: quantas semínimas vale 1 beat
 
 function applyStyle(index) {
+	if (isRecording) {
+		stopRecording(); // troca de style interrompe e exporta a gravação em andamento
+	}
+	if (recordArmed) {
+		recordArmed = false;
+		pendingBpm = null;
+		updateRecordUI();
+	}
 	if (isPlaying) {
 		togglePlay(); // Para a música se estiver tocando
 	}
@@ -347,6 +355,26 @@ function scheduler() {
 		const isHalfEnd = !isMeasureEnd && (nextTick % halfTicks === 0) && nextTick > 0;
 		const isBeatEnd = !isMeasureEnd && !isHalfEnd && (nextTick % ticksPerBeat === 0) && nextTick > 0;
 		const isImmediate = !isMeasureEnd && !isHalfEnd && !isBeatEnd;
+
+		// Aplica troca de BPM quantizada (gravação)
+		if (pendingBpm !== null) {
+			const atHalfPoint = (nextTick % halfTicks === 0) && nextTick > 0;
+			const atBeatPoint = (nextTick % ticksPerBeat === 0) && nextTick > 0;
+			let bpmDue;
+			if (quantization === 'measure')        bpmDue = isMeasureEnd;
+			else if (quantization === 'half')       bpmDue = isMeasureEnd || atHalfPoint;
+			else if (quantization === 'beat')       bpmDue = isMeasureEnd || atHalfPoint || atBeatPoint;
+			else /* immediate */                    bpmDue = true;
+
+			if (bpmDue) {
+				const applyTime = barStartTime + ticksToSeconds(nextTick);
+				bpm = pendingBpm;
+				pendingBpm = null;
+				document.getElementById('bpm-display').value = bpm;
+				logTempoChange(applyTime);
+				setStatus(`BPM aplicado: ${bpm}`);
+			}
+		}
 
 		// Quantização só se aplica a Fills - todo o resto usa 'measure'
 		const isFill = userQueued && userQueued.startsWith('Fill ');
@@ -683,20 +711,39 @@ let isRecording               = false;
 let recordArmed               = false; // armado: vai começar no próximo início de compasso real
 let isPlayingRecording        = false;
 let recordStartTime           = 0;     // audioCtx.currentTime no início real da gravação (alinhado ao grid)
-let recordEvents               = [];    // { time, note, velocity, role, channel } — tempos absolutos de audioCtx
+let recordEvents              = [];    // { time, note, velocity, role, channel } — tempos absolutos de audioCtx
 let recordedEventsForPlayback = [];    // snapshot congelado após parar, usado no botão Play
-let tempoChanges               = [];    // { time, bpm } — histórico de BPM durante a gravação
-let recordTimeSig               = { num: 4, beatType: 4 }; // fórmula de compasso capturada no início da gravação
-let recordBeatUnitFactor        = 1; // beatUnitFactor capturado no início da gravação (compassos compostos)
+let tempoChanges              = [];    // { time, bpm } — histórico de BPM durante a gravação
+let recordTimeSig             = { num: 4, beatType: 4 }; // fórmula de compasso capturada no início da gravação
+let recordBeatUnitFactor      = 1;     // beatUnitFactor capturado no início da gravação (compassos compostos)
+let pendingBpm                = null;  // BPM aguardando aplicação na próxima fronteira de quantização (durante gravação)
 
-function logTempoChange() {
+function logTempoChange(atTime) {
 	if (!isRecording || !audioCtx) return;
-	tempoChanges.push({ time: audioCtx.currentTime, bpm });
+	tempoChanges.push({ time: atTime ?? audioCtx.currentTime, bpm });
+}
+
+// Ponto único de entrada pra mudanças de BPM (tap tempo, +/-, input manual).
+// Durante uma gravação com a música tocando, a troca fica "armada" e só é aplicada
+// na próxima fronteira de quantização (mesma grade usada pelos Fills) — assim o BPM
+// gravado no MIDI cai exatamente no grid, igual às notas.
+function requestBpmChange(newBpm) {
+	newBpm = Math.max(40, Math.min(250, newBpm));
+	if (isRecording && isPlaying) {
+		pendingBpm = newBpm;
+		bpmInput.value = newBpm;
+		setStatus(`BPM ${newBpm} agendado (quantização: ${quantization}).`);
+	} else {
+		bpm = newBpm;
+		bpmInput.value = bpm;
+		logTempoChange();
+	}
 }
 
 function stopRecording() {
 	if (!isRecording) return;
 	isRecording = false;
+	pendingBpm = null;
 	if (recordEvents.length === 0) {
 		setStatus('Gravação vazia — nenhuma nota capturada.');
 		updateRecordUI();
@@ -745,7 +792,7 @@ function secondsToRecordedTicks(tSec, ppq) {
 	return Math.max(0, Math.round(ticks));
 }
 
-// MIDI writer (zero-dependency, Tipo 0) ===========================================================
+// MIDI writer (zero-dependency, Tipo 1: conductor track + 1 track por canal) =====================
 function midiVarLen(value) {
 	let buf = value & 0x7f;
 	const bytes = [];
@@ -763,41 +810,49 @@ function denominatorPower(beatType) {
 	return Math.max(0, Math.round(Math.log2(beatType || 4)));
 }
 
-function buildMidiFile(noteEvents, metaEvents, ppq) {
-	// noteEvents: [{ tick, note, velocity, channel, type: 'on'|'off' }]
-	// metaEvents: [{ tick, kind: 'tempo', bpm }] ou [{ tick, kind: 'timesig', num, beatType }]
-	const all = [
-		...metaEvents.map(e => ({ ...e, isMeta: true })),
-		...noteEvents.map(e => ({ ...e, isMeta: false })),
-	];
+function sortTrackEvents(events) {
 	// Em empate de tick: meta antes de note-off antes de note-on
-	all.sort((a, b) => a.tick - b.tick
-		|| (Number(b.isMeta) - Number(a.isMeta))
+	return events.slice().sort((a, b) => a.tick - b.tick
+		|| ((a.kind ? 0 : 1) - (b.kind ? 0 : 1))
 		|| ((a.type === 'off' ? 0 : 1) - (b.type === 'off' ? 0 : 1)));
+}
 
-	const track = [];
+function buildTrackBytes(events, trackName) {
+	const bytes = [];
+	if (trackName) {
+		const nameBytes = [...trackName].map(c => c.charCodeAt(0) & 0x7f);
+		bytes.push(...midiVarLen(0), 0xFF, 0x03, nameBytes.length, ...nameBytes);
+	}
 	let lastTick = 0;
-	for (const ev of all) {
-		track.push(...midiVarLen(Math.max(0, ev.tick - lastTick)));
+	for (const ev of sortTrackEvents(events)) {
+		bytes.push(...midiVarLen(Math.max(0, ev.tick - lastTick)));
 		lastTick = ev.tick;
-		if (ev.isMeta && ev.kind === 'tempo') {
+		if (ev.kind === 'tempo') {
 			const microsPerBeat = Math.max(1, Math.round(60000000 / ev.bpm));
-			track.push(0xFF, 0x51, 0x03, (microsPerBeat >> 16) & 0xff, (microsPerBeat >> 8) & 0xff, microsPerBeat & 0xff);
-		} else if (ev.isMeta && ev.kind === 'timesig') {
-			track.push(0xFF, 0x58, 0x04, ev.num & 0xff, denominatorPower(ev.beatType) & 0xff, 24, 8);
+			bytes.push(0xFF, 0x51, 0x03, (microsPerBeat >> 16) & 0xff, (microsPerBeat >> 8) & 0xff, microsPerBeat & 0xff);
+		} else if (ev.kind === 'timesig') {
+			bytes.push(0xFF, 0x58, 0x04, ev.num & 0xff, denominatorPower(ev.beatType) & 0xff, 24, 8);
 		} else {
 			const status = (ev.type === 'on' ? 0x90 : 0x80) | (ev.channel & 0x0f);
-			track.push(status, ev.note & 0x7f, ev.velocity & 0x7f);
+			bytes.push(status, ev.note & 0x7f, ev.velocity & 0x7f);
 		}
 	}
-	track.push(...midiVarLen(0), 0xFF, 0x2F, 0x00); // End of Track
+	bytes.push(...midiVarLen(0), 0xFF, 0x2F, 0x00); // End of Track
+	return bytes;
+}
 
-	const header = [0x4D,0x54,0x68,0x64, 0,0,0,6, 0,0, 0,1, (ppq >> 8) & 0xff, ppq & 0xff];
-	const trackHeader = [0x4D,0x54,0x72,0x6B,
-		(track.length >>> 24) & 0xff, (track.length >>> 16) & 0xff,
-		(track.length >>> 8) & 0xff, track.length & 0xff];
+function wrapTrackChunk(bytes) {
+	return [0x4D,0x54,0x72,0x6B,
+		(bytes.length >>> 24) & 0xff, (bytes.length >>> 16) & 0xff,
+		(bytes.length >>> 8) & 0xff, bytes.length & 0xff, ...bytes];
+}
 
-	return new Blob([new Uint8Array([...header, ...trackHeader, ...track])], { type: 'audio/midi' });
+// tracks: [{ name, events }] — sempre gera Format 1 (mesmo com 1 única track de notas,
+// pra manter track conductor separada das notas, igual DAWs costumam exportar)
+function buildMidiFile(ppq, tracks) {
+	const chunks = tracks.map(t => wrapTrackChunk(buildTrackBytes(t.events, t.name)));
+	const header = [0x4D,0x54,0x68,0x64, 0,0,0,6, 0,1, (tracks.length >> 8) & 0xff, tracks.length & 0xff, (ppq >> 8) & 0xff, ppq & 0xff];
+	return new Blob([new Uint8Array([...header, ...chunks.flat()])], { type: 'audio/midi' });
 }
 
 function timestampStr() {
@@ -819,21 +874,27 @@ function exportRecordingAsMidi() {
 	const ppq = stylePPQ || 480;
 	const gateTicks = Math.max(10, Math.round(ppq / 16)); // duração curta (percussivo)
 
-	const noteEvents = [];
+	const rhythmNotes = [];
+	const subNotes = [];
 	for (const ev of recordedEventsForPlayback) {
 		const tickOn = secondsToRecordedTicks(ev.time, ppq);
-		noteEvents.push({ tick: tickOn,             note: ev.note, velocity: ev.velocity, channel: ev.channel, type: 'on'  });
-		noteEvents.push({ tick: tickOn + gateTicks,  note: ev.note, velocity: 0,           channel: ev.channel, type: 'off' });
+		const bucket = ev.role === 'rhythm' ? rhythmNotes : subNotes;
+		bucket.push({ tick: tickOn,             note: ev.note, velocity: ev.velocity, channel: ev.channel, type: 'on'  });
+		bucket.push({ tick: tickOn + gateTicks, note: ev.note, velocity: 0,           channel: ev.channel, type: 'off' });
 	}
 
-	const metaEvents = [
+	const conductorEvents = [
 		{ tick: 0, kind: 'timesig', num: recordTimeSig.num, beatType: recordTimeSig.beatType },
 		...tempoChanges.map(tc => ({ tick: secondsToRecordedTicks(tc.time, ppq), kind: 'tempo', bpm: tc.bpm })),
 	];
 
-	const blob = buildMidiFile(noteEvents, metaEvents, ppq);
+	const tracks = [{ name: 'Conductor', events: conductorEvents }];
+	if (rhythmNotes.length) tracks.push({ name: 'Rhythm', events: rhythmNotes });
+	if (subNotes.length)    tracks.push({ name: 'SubRhythm', events: subNotes });
+
+	const blob = buildMidiFile(ppq, tracks);
 	downloadBlob(blob, `OpenArranger_${timestampStr()}.mid`);
-	setStatus(`Gravação exportada: ${recordedEventsForPlayback.length} notas, ${recordTimeSig.num}/${recordTimeSig.beatType}, BPM inicial ${tempoChanges[0]?.bpm ?? bpm}.`);
+	setStatus(`Gravação exportada: ${recordedEventsForPlayback.length} notas em ${tracks.length} tracks, ${recordTimeSig.num}/${recordTimeSig.beatType}, BPM inicial ${tempoChanges[0]?.bpm ?? bpm}.`);
 }
 
 // Playback da última gravação (reaproveita os samples já carregados) ============================
@@ -896,8 +957,8 @@ function toggleRecordingPlayback() {
 	else playRecording();
 }
 
-const ICON_RECORD = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-record-fill" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 13A5 5 0 1 0 8 3a5 5 0 0 0 0 10"/></svg>';
-const ICON_STOP   = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-stop-fill" viewBox="0 0 16 16"><path d="M5 3.5h6A1.5 1.5 0 0 1 12.5 5v6a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 11V5A1.5 1.5 0 0 1 5 3.5"/></svg>';
+const ICON_RECORD  = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-record-fill" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 13A5 5 0 1 0 8 3a5 5 0 0 0 0 10"/></svg>';
+const ICON_STOP    = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-stop-fill" viewBox="0 0 16 16"><path d="M5 3.5h6A1.5 1.5 0 0 1 12.5 5v6a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 11V5A1.5 1.5 0 0 1 5 3.5"/></svg>';
 const ICON_PLAY    = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-play-fill" viewBox="0 0 16 16"><path d="m11.596 8.697-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393"/></svg>';
 
 function updateRecordUI() {
@@ -1142,10 +1203,7 @@ function processTap() {
 	for (let i = 1; i < tapTimes.length; i++) gaps.push(tapTimes[i] - tapTimes[i - 1]);
 	const avgGap = gaps.reduce((a, b) => a + b, 0) / gaps.length;
 	const newBpm = Math.round(60000 / avgGap);
-	bpm = Math.max(40, Math.min(250, newBpm));
-	document.getElementById('bpm-display').value = bpm;
-	logTempoChange();
-	setStatus(`Tap tempo: ${bpm} BPM`);
+	requestBpmChange(newBpm);
 }
 
 // Long-press no BPM +/- para incremento contínuo ================================================
@@ -1192,15 +1250,11 @@ document.getElementById('btn-play').addEventListener('click', togglePlay);
 const bpmInput = document.getElementById('bpm-display');
 
 makeLongPress(document.getElementById('bpm-plus'), () => {
-	bpm = Math.min(250, bpm + 1);
-	bpmInput.value = bpm;
-	logTempoChange();
+	requestBpmChange((isRecording && isPlaying ? (pendingBpm ?? bpm) : bpm) + 1);
 });
 
 makeLongPress(document.getElementById('bpm-minus'), () => {
-	bpm = Math.max(40, bpm - 1);
-	bpmInput.value = bpm;
-	logTempoChange();
+	requestBpmChange((isRecording && isPlaying ? (pendingBpm ?? bpm) : bpm) - 1);
 });
 
 document.getElementById('beat-indicator').addEventListener('click', processTap);
@@ -1209,9 +1263,7 @@ document.getElementById('beat-indicator').title = 'Toque para fazer tap tempo';
 bpmInput.addEventListener('change', (e) => {
 	let val = parseInt(e.target.value, 10);
 	if (isNaN(val)) val = 120;
-	bpm = Math.max(40, Math.min(250, val));
-	bpmInput.value = bpm;
-	logTempoChange();
+	requestBpmChange(val);
 });
 
 document.getElementById('btn-load-kit').addEventListener('click', () => document.getElementById('input-kit').click());
